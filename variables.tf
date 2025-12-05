@@ -83,6 +83,17 @@ variable "archive_node_count" {
   }
 }
 
+variable "load_test_node_count" {
+  description = "Number of temporary non-validator nodes for load testing"
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.load_test_node_count >= 0
+    error_message = "Load test node count must be non-negative"
+  }
+}
+
 variable "validator_node_size" {
   description = "Size/tier for validator nodes"
   type        = string
@@ -93,6 +104,12 @@ variable "archive_node_size" {
   description = "Size/tier for archive nodes"
   type        = string
   default     = "medium"
+}
+
+variable "load_test_node_size" {
+  description = "Size/tier for load test nodes"
+  type        = string
+  default     = "small"
 }
 
 # Stack Configuration

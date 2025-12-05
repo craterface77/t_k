@@ -17,8 +17,10 @@ module "blockchain_chain" {
   # Nodes
   validator_node_count = var.validator_node_count
   archive_node_count   = var.archive_node_count
+  load_test_node_count = var.load_test_node_count
   validator_node_size  = var.validator_node_size
   archive_node_size    = var.archive_node_size
+  load_test_node_size  = var.load_test_node_size
   node_name_prefix     = var.node_name_prefix
   force_delete_nodes   = var.force_delete_nodes
 

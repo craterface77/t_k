@@ -65,6 +65,22 @@ output "archive_service_ids" {
   value       = module.blockchain_chain.archive_service_ids
 }
 
+# Load Test Nodes
+output "load_test_node_ids" {
+  description = "List of load test node runtime IDs"
+  value       = module.blockchain_chain.load_test_node_ids
+}
+
+output "load_test_node_names" {
+  description = "List of load test node names"
+  value       = module.blockchain_chain.load_test_node_names
+}
+
+output "load_test_service_ids" {
+  description = "List of load test service IDs"
+  value       = module.blockchain_chain.load_test_service_ids
+}
+
 # EVM Gateway
 output "evm_gateway_runtime_id" {
   description = "EVM Gateway runtime ID"

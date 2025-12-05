@@ -63,6 +63,22 @@ output "archive_service_ids" {
   value       = kaleido_platform_service.archive_service[*].id
 }
 
+# Load Test Nodes
+output "load_test_node_ids" {
+  description = "List of load test node runtime IDs"
+  value       = kaleido_platform_runtime.load_test_runtime[*].id
+}
+
+output "load_test_node_names" {
+  description = "List of load test node names"
+  value       = kaleido_platform_runtime.load_test_runtime[*].name
+}
+
+output "load_test_service_ids" {
+  description = "List of load test service IDs"
+  value       = kaleido_platform_service.load_test_service[*].id
+}
+
 # EVM Gateway
 output "evm_gateway_runtime_id" {
   description = "EVM Gateway runtime ID"
@@ -105,12 +121,13 @@ output "block_indexer_name" {
 output "deployment_summary" {
   description = "Summary of deployed resources"
   value = {
-    environment           = var.environment_name
-    network_name          = var.network_name
-    consensus             = var.consensus_algorithm
-    validator_nodes_count = var.validator_node_count
-    archive_nodes_count   = var.archive_node_count
-    evm_gateway_enabled   = var.enable_evm_gateway
-    block_indexer_enabled = var.enable_block_indexer
+    environment            = var.environment_name
+    network_name           = var.network_name
+    consensus              = var.consensus_algorithm
+    validator_nodes_count  = var.validator_node_count
+    archive_nodes_count    = var.archive_node_count
+    load_test_nodes_count  = var.load_test_node_count
+    evm_gateway_enabled    = var.enable_evm_gateway
+    block_indexer_enabled  = var.enable_block_indexer
   }
 }
