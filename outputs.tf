@@ -124,3 +124,89 @@ output "deployment_summary" {
   description = "Summary of deployed resources"
   value       = module.blockchain_chain.deployment_summary
 }
+
+
+# Hyperledger Firefly Outputs
+
+
+output "firefly_enabled" {
+  description = "Whether Firefly middleware is enabled"
+  value       = var.enable_firefly
+}
+
+output "firefly_stack_id" {
+  description = "Firefly middleware stack ID"
+  value       = var.enable_firefly ? module.firefly_middleware[0].firefly_stack_id : null
+}
+
+output "firefly_stack_name" {
+  description = "Firefly middleware stack name"
+  value       = var.enable_firefly ? module.firefly_middleware[0].firefly_stack_name : null
+}
+
+# Firefly Core
+output "firefly_core_service_id" {
+  description = "Firefly core service ID"
+  value       = var.enable_firefly ? module.firefly_middleware[0].firefly_core_service_id : null
+}
+
+output "firefly_core_name" {
+  description = "Firefly core service name"
+  value       = var.enable_firefly ? module.firefly_middleware[0].firefly_core_name : null
+}
+
+# Transaction Manager
+output "firefly_transaction_manager_service_id" {
+  description = "Firefly transaction manager service ID"
+  value       = var.enable_firefly ? module.firefly_middleware[0].transaction_manager_service_id : null
+}
+
+output "firefly_transaction_manager_name" {
+  description = "Firefly transaction manager service name"
+  value       = var.enable_firefly ? module.firefly_middleware[0].transaction_manager_name : null
+}
+
+# Private Data Manager
+output "firefly_private_data_manager_service_id" {
+  description = "Firefly private data manager service ID"
+  value       = var.enable_firefly ? module.firefly_middleware[0].private_data_manager_service_id : null
+}
+
+output "firefly_private_data_manager_name" {
+  description = "Firefly private data manager service name"
+  value       = var.enable_firefly ? module.firefly_middleware[0].private_data_manager_name : null
+}
+
+# Key Manager
+output "firefly_key_manager_service_id" {
+  description = "Firefly key manager service ID"
+  value       = var.enable_firefly ? module.firefly_middleware[0].key_manager_service_id : null
+}
+
+output "firefly_key_manager_name" {
+  description = "Firefly key manager service name"
+  value       = var.enable_firefly ? module.firefly_middleware[0].key_manager_name : null
+}
+
+# Contract Manager
+output "firefly_contract_manager_service_id" {
+  description = "Firefly contract manager service ID"
+  value       = var.enable_firefly ? module.firefly_middleware[0].contract_manager_service_id : null
+}
+
+output "firefly_contract_manager_name" {
+  description = "Firefly contract manager service name"
+  value       = var.enable_firefly ? module.firefly_middleware[0].contract_manager_name : null
+}
+
+# Firefly Summary
+output "firefly_deployment_summary" {
+  description = "Summary of Firefly middleware deployment"
+  value       = var.enable_firefly ? module.firefly_middleware[0].firefly_deployment_summary : null
+}
+
+# All Service IDs
+output "firefly_all_service_ids" {
+  description = "Collection of all Firefly service IDs"
+  value       = var.enable_firefly ? module.firefly_middleware[0].all_service_ids : null
+}

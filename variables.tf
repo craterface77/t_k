@@ -57,7 +57,7 @@ variable "consensus_algorithm" {
 variable "block_period_seconds" {
   description = "Block production interval in seconds"
   type        = number
-  default     = 2
+  default     = 4
 }
 
 # Node Configuration
@@ -167,3 +167,135 @@ variable "force_delete_nodes" {
   type        = bool
   default     = false
 }
+
+
+# Hyperledger Firefly Configuration
+
+
+variable "enable_firefly" {
+  description = "Enable Hyperledger Firefly middleware deployment"
+  type        = bool
+  default     = false
+}
+
+variable "firefly_stack_name" {
+  description = "Name for the Firefly middleware stack"
+  type        = string
+  default     = "firefly-middleware-stack"
+}
+
+# Firefly Core
+variable "enable_firefly_core" {
+  description = "Enable Hyperledger Firefly core service"
+  type        = bool
+  default     = true
+}
+
+variable "firefly_core_name" {
+  description = "Name for Firefly core service"
+  type        = string
+  default     = "firefly-core"
+}
+
+# Transaction Manager
+variable "enable_transaction_manager" {
+  description = "Enable Firefly transaction manager"
+  type        = bool
+  default     = true
+}
+
+variable "transaction_manager_name" {
+  description = "Name for transaction manager service"
+  type        = string
+  default     = "firefly-txmanager"
+}
+
+variable "transaction_manager_confirmations" {
+  description = "Number of block confirmations required for transactions"
+  type        = number
+  default     = 0
+}
+
+variable "transaction_manager_config" {
+  description = "Custom configuration for transaction manager"
+  type        = map(any)
+  default     = {}
+}
+
+# Private Data Manager
+variable "enable_private_data_manager" {
+  description = "Enable Firefly private data manager"
+  type        = bool
+  default     = true
+}
+
+variable "private_data_manager_name" {
+  description = "Name for private data manager service"
+  type        = string
+  default     = "firefly-dataexchange"
+}
+
+variable "private_data_manager_config" {
+  description = "Custom configuration for private data manager"
+  type        = map(any)
+  default     = {}
+}
+
+# Key Manager
+variable "enable_key_manager" {
+  description = "Enable Firefly key manager"
+  type        = bool
+  default     = true
+}
+
+variable "key_manager_name" {
+  description = "Name for key manager service"
+  type        = string
+  default     = "firefly-signer"
+}
+
+variable "key_manager_type" {
+  description = "Type of key manager (FireFlySigner, HDWalletSigner)"
+  type        = string
+  default     = "FireFlySigner"
+}
+
+variable "key_manager_config" {
+  description = "Custom configuration for key manager"
+  type        = map(any)
+  default     = {}
+}
+
+# Contract Manager
+variable "enable_contract_manager" {
+  description = "Enable Firefly contract manager"
+  type        = bool
+  default     = true
+}
+
+variable "contract_manager_name" {
+  description = "Name for contract manager service"
+  type        = string
+  default     = "firefly-contracts"
+}
+
+variable "contract_manager_config" {
+  description = "Custom configuration for contract manager"
+  type        = map(any)
+  default     = {}
+}
+
+# Database Configuration
+variable "firefly_database_type" {
+  description = "Database type for Firefly (postgres, sqlite)"
+  type        = string
+  default     = "postgres"
+}
+
+# Advanced Configuration
+variable "firefly_version" {
+  description = "Firefly version to deploy"
+  type        = string
+  default     = "latest"
+}
+

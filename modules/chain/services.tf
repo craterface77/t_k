@@ -1,6 +1,6 @@
-# ===================================
+
 # EVM Gateway
-# ===================================
+
 
 # Create Runtime for EVM Gateway
 resource "kaleido_platform_runtime" "evm_gateway_runtime" {
@@ -45,9 +45,9 @@ data "kaleido_platform_evm_netinfo" "evm_gateway_netinfo" {
   ]
 }
 
-# ===================================
+
 # Block Indexer
-# ===================================
+
 
 # Create Runtime for Block Indexer
 resource "kaleido_platform_runtime" "block_indexer_runtime" {

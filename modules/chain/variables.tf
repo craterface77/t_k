@@ -35,7 +35,7 @@ variable "consensus_algorithm" {
 variable "block_period_seconds" {
   description = "Block production interval in seconds"
   type        = number
-  default     = 2
+  default     = 4
 }
 
 # Node Configuration

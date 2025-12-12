@@ -121,13 +121,13 @@ output "block_indexer_name" {
 output "deployment_summary" {
   description = "Summary of deployed resources"
   value = {
-    environment            = var.environment_name
-    network_name           = var.network_name
-    consensus              = var.consensus_algorithm
-    validator_nodes_count  = var.validator_node_count
-    archive_nodes_count    = var.archive_node_count
-    load_test_nodes_count  = var.load_test_node_count
-    evm_gateway_enabled    = var.enable_evm_gateway
-    block_indexer_enabled  = var.enable_block_indexer
+    environment           = var.environment_name
+    network_name          = var.network_name
+    consensus             = var.consensus_algorithm
+    validator_nodes_count = var.validator_node_count
+    archive_nodes_count   = var.archive_node_count
+    load_test_nodes_count = var.load_test_node_count
+    evm_gateway_enabled   = var.enable_evm_gateway
+    block_indexer_enabled = var.enable_block_indexer
   }
 }
