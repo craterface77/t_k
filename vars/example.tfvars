@@ -31,6 +31,18 @@ enable_evm_gateway   = true
 block_indexer_name   = "block-indexer-mock"
 evm_gateway_name     = "evm-gateway-mock"
 
+# EVM Gateway Node Selection
+# Choose which node type the EVM Gateway should connect to
+# Options: "validator", "archive", "load_test"
+evm_gateway_node_type = "archive" # Default: uses archive node for better performance
+
+# Select specific node index (0-based) from the chosen node type
+# Must be less than the node count for that type
+# Examples:
+#   - For first validator node: evm_gateway_node_type = "validator", evm_gateway_node_index = 0
+#   - For second archive node: evm_gateway_node_type = "archive", evm_gateway_node_index = 1
+evm_gateway_node_index = 0 # Default: uses the first node of selected type
+
 # Hyperledger Firefly Configuration
 # Enable Firefly middleware deployment
 enable_firefly = true

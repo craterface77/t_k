@@ -119,6 +119,28 @@ variable "evm_gateway_name" {
   type        = string
 }
 
+variable "evm_gateway_node_type" {
+  description = "Type of node to attach EVM Gateway to (validator, archive, or load_test)"
+  type        = string
+  default     = "archive"
+
+  validation {
+    condition     = contains(["validator", "archive", "load_test"], var.evm_gateway_node_type)
+    error_message = "EVM Gateway node type must be one of: validator, archive, load_test"
+  }
+}
+
+variable "evm_gateway_node_index" {
+  description = "Index of the node to attach EVM Gateway to (0-based). Defaults to 0 (first node of the selected type)"
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.evm_gateway_node_index >= 0
+    error_message = "EVM Gateway node index must be non-negative"
+  }
+}
+
 # Additional Configuration
 variable "node_name_prefix" {
   description = "Prefix for node names"

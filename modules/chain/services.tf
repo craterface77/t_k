@@ -25,11 +25,18 @@ resource "kaleido_platform_service" "evm_gateway_service" {
     network = {
       id = kaleido_platform_network.blockchain_network.id
     }
+    node = {
+      id = var.evm_gateway_node_type == "validator" ? kaleido_platform_service.validator_service[var.evm_gateway_node_index].id : (
+        var.evm_gateway_node_type == "archive" ? kaleido_platform_service.archive_service[var.evm_gateway_node_index].id :
+        kaleido_platform_service.load_test_service[var.evm_gateway_node_index].id
+      )
+    }
   })
 
   depends_on = [
     kaleido_platform_service.validator_service,
-    kaleido_platform_service.archive_service
+    kaleido_platform_service.archive_service,
+    kaleido_platform_service.load_test_service
   ]
 }
 

@@ -28,10 +28,12 @@ module "blockchain_chain" {
   force_delete_nodes   = var.force_delete_nodes
 
   # Services
-  enable_block_indexer = var.enable_block_indexer
-  enable_evm_gateway   = var.enable_evm_gateway
-  block_indexer_name   = var.block_indexer_name
-  evm_gateway_name     = var.evm_gateway_name
+  enable_block_indexer     = var.enable_block_indexer
+  enable_evm_gateway       = var.enable_evm_gateway
+  block_indexer_name       = var.block_indexer_name
+  evm_gateway_name         = var.evm_gateway_name
+  evm_gateway_node_type    = var.evm_gateway_node_type
+  evm_gateway_node_index   = var.evm_gateway_node_index
 
   # Tags
   tags = var.tags
