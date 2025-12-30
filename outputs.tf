@@ -166,17 +166,6 @@ output "firefly_transaction_manager_name" {
   value       = var.enable_firefly ? module.firefly_middleware[0].transaction_manager_name : null
 }
 
-# Private Data Manager
-output "firefly_private_data_manager_service_id" {
-  description = "Firefly private data manager service ID"
-  value       = var.enable_firefly ? module.firefly_middleware[0].private_data_manager_service_id : null
-}
-
-output "firefly_private_data_manager_name" {
-  description = "Firefly private data manager service name"
-  value       = var.enable_firefly ? module.firefly_middleware[0].private_data_manager_name : null
-}
-
 # Key Manager
 output "firefly_key_manager_service_id" {
   description = "Firefly key manager service ID"

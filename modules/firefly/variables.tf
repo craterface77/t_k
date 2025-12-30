@@ -76,27 +76,6 @@ variable "transaction_manager_config" {
 }
 
 
-# Private Data Manager
-
-variable "enable_private_data_manager" {
-  description = "Enable Firefly private data manager"
-  type        = bool
-  default     = true
-}
-
-variable "private_data_manager_name" {
-  description = "Name for private data manager service"
-  type        = string
-  default     = "firefly-dataexchange"
-}
-
-variable "private_data_manager_config" {
-  description = "Custom configuration for private data manager"
-  type        = map(any)
-  default     = {}
-}
-
-
 # Key Manager
 
 variable "enable_key_manager" {
@@ -124,8 +103,12 @@ variable "key_manager_type" {
 
 variable "key_manager_config" {
   description = "Custom configuration for key manager"
-  type        = map(any)
-  default     = {}
+  type = object({
+    keystorePath     = optional(string)
+    signingAlgorithm = optional(string)
+    hsmEnabled       = optional(bool)
+  })
+  default = {}
 }
 
 
@@ -145,8 +128,13 @@ variable "contract_manager_name" {
 
 variable "contract_manager_config" {
   description = "Custom configuration for contract manager"
-  type        = map(any)
-  default     = {}
+  type = object({
+    autoConfirm     = optional(bool)
+    confirmations   = optional(number)
+    defaultGasLimit = optional(number)
+    verifyBytecode  = optional(bool)
+  })
+  default = {}
 }
 
 

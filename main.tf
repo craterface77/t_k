@@ -28,12 +28,10 @@ module "blockchain_chain" {
   force_delete_nodes   = var.force_delete_nodes
 
   # Services
-  enable_block_indexer     = var.enable_block_indexer
-  enable_evm_gateway       = var.enable_evm_gateway
-  block_indexer_name       = var.block_indexer_name
-  evm_gateway_name         = var.evm_gateway_name
-  evm_gateway_node_type    = var.evm_gateway_node_type
-  evm_gateway_node_index   = var.evm_gateway_node_index
+  enable_block_indexer = var.enable_block_indexer
+  enable_evm_gateway   = var.enable_evm_gateway
+  block_indexer_name   = var.block_indexer_name
+  evm_gateway_name     = var.evm_gateway_name
 
   # Tags
   tags = var.tags
@@ -65,14 +63,9 @@ module "firefly_middleware" {
 
   # Transaction Manager
   enable_transaction_manager      = var.enable_transaction_manager
-  transaction_manager_name        = var.transaction_manager_name
+  transaction_manager_name          = var.transaction_manager_name
   transaction_manager_confirmations = var.transaction_manager_confirmations
-  transaction_manager_config      = var.transaction_manager_config
-
-  # Private Data Manager
-  enable_private_data_manager = var.enable_private_data_manager
-  private_data_manager_name   = var.private_data_manager_name
-  private_data_manager_config = var.private_data_manager_config
+  transaction_manager_config        = var.transaction_manager_config
 
   # Key Manager
   enable_key_manager = var.enable_key_manager

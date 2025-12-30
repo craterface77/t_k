@@ -11,7 +11,7 @@ variable "kaleido_platform_username" {
   sensitive   = true
 }
 
-variable "kaleido_platform_password" {
+variable "kaleido_platform_api_key" {
   description = "Kaleido Platform password or API key"
   type        = string
   sensitive   = true
@@ -144,28 +144,6 @@ variable "evm_gateway_name" {
   default     = "evm-gateway"
 }
 
-variable "evm_gateway_node_type" {
-  description = "Type of node to attach EVM Gateway to (validator, archive, or load_test)"
-  type        = string
-  default     = "archive"
-
-  validation {
-    condition     = contains(["validator", "archive", "load_test"], var.evm_gateway_node_type)
-    error_message = "EVM Gateway node type must be one of: validator, archive, load_test"
-  }
-}
-
-variable "evm_gateway_node_index" {
-  description = "Index of the node to attach EVM Gateway to (0-based). Defaults to 0 (first node of the selected type)"
-  type        = number
-  default     = 0
-
-  validation {
-    condition     = var.evm_gateway_node_index >= 0
-    error_message = "EVM Gateway node index must be non-negative"
-  }
-}
-
 # Tags and Metadata
 variable "tags" {
   description = "Tags to apply to resources"
@@ -244,25 +222,6 @@ variable "transaction_manager_config" {
   default     = {}
 }
 
-# Private Data Manager
-variable "enable_private_data_manager" {
-  description = "Enable Firefly private data manager"
-  type        = bool
-  default     = true
-}
-
-variable "private_data_manager_name" {
-  description = "Name for private data manager service"
-  type        = string
-  default     = "firefly-dataexchange"
-}
-
-variable "private_data_manager_config" {
-  description = "Custom configuration for private data manager"
-  type        = map(any)
-  default     = {}
-}
-
 # Key Manager
 variable "enable_key_manager" {
   description = "Enable Firefly key manager"
@@ -284,8 +243,12 @@ variable "key_manager_type" {
 
 variable "key_manager_config" {
   description = "Custom configuration for key manager"
-  type        = map(any)
-  default     = {}
+  type = object({
+    keystorePath     = optional(string)
+    signingAlgorithm = optional(string)
+    hsmEnabled       = optional(bool)
+  })
+  default = {}
 }
 
 # Contract Manager
@@ -303,8 +266,13 @@ variable "contract_manager_name" {
 
 variable "contract_manager_config" {
   description = "Custom configuration for contract manager"
-  type        = map(any)
-  default     = {}
+  type = object({
+    autoConfirm     = optional(bool)
+    confirmations   = optional(number)
+    defaultGasLimit = optional(number)
+    verifyBytecode  = optional(bool)
+  })
+  default = {}
 }
 
 # Database Configuration

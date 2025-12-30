@@ -12,5 +12,5 @@ terraform {
 provider "kaleido" {
   platform_api      = var.kaleido_platform_api
   platform_username = var.kaleido_platform_username
-  platform_password = var.kaleido_platform_password
+  platform_password = var.kaleido_platform_api_key
 }

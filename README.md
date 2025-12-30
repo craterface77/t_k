@@ -104,6 +104,526 @@ enable_subscriptions        = true
 enable_event_listeners      = true
 ```
 
+## Complete Parameter Reference from dev.tfvars
+
+| Parameter                         | Can Change? | Notes                          |
+| --------------------------------- | ----------- | ------------------------------ |
+| `environment_name`                | YES         | Label only                     |
+| `network_name`                    | YES         | Updates in-place               |
+| `network_type`                    | NO          | Not tested                     |
+| `consensus_algorithm`             | YES         | Updates in-place               |
+| `block_period_seconds`            | YES         | Updates in-place               |
+| `validator_node_count`            | PARTIAL     | Adds/removes nodes             |
+| `archive_node_count`              | PARTIAL     | Adds/removes nodes             |
+| `validator_node_size`             | NO          | Ignored                        |
+| `archive_node_size`               | NO          | Ignored                        |
+| `node_name_prefix`                | NO          | Renames all nodes              |
+| `chain_infrastructure_stack_name` | NO          | Recreates stack (24 destroy)   |
+| `enable_block_indexer`            | YES         | Creates/destroys service       |
+| `enable_evm_gateway`              | YES         | Creates/destroys service       |
+| `block_indexer_name`              | YES         | Updates in-place               |
+| `evm_gateway_name`                | YES         | Updates in-place               |
+| `enable_firefly`                  | YES         | Creates/destroys stack         |
+| `firefly_stack_name`              | NO          | Recreates Firefly (24 destroy) |
+| `enable_firefly_core`             | YES         | Creates/destroys service       |
+| `firefly_core_name`               | YES         | Updates in-place               |
+| `enable_transaction_manager`      | YES         | Creates/destroys service       |
+| `transaction_manager_name`        | NO          | Not tested                     |
+| `transaction_manager_config.*`    | YES         | Updates runtime                |
+| `enable_key_manager`              | YES         | Creates/destroys service       |
+| `key_manager_name`                | NO          | Not tested                     |
+| `key_manager_type`                | YES         | Updates in-place               |
+| `key_manager_config.*`            | YES         | Updates runtime                |
+| `enable_contract_manager`         | YES         | Creates/destroys service       |
+| `contract_manager_name`           | NO          | Not tested                     |
+| `contract_manager_config.*`       | YES         | Updates runtime                |
+| `firefly_database_type`           | NO          | Data loss                      |
+
+## Component Management Guide
+
+Complete guide for adding and removing blockchain network and middleware components.
+
+### Adding Components
+
+#### Adding Validator Nodes
+
+Validator nodes participate in consensus and validate transactions.
+
+**Steps:**
+
+1. **Edit Configuration**
+
+   Open `vars/dev.tfvars` and increase the validator count:
+
+   ```hcl
+   # vars/dev.tfvars
+   validator_node_count = 6  # Increased from 4
+   ```
+
+2. **Review Changes**
+
+   ```bash
+   terraform plan -var-file="vars/dev.tfvars"
+   ```
+
+3. **Apply Changes**
+
+   ```bash
+   terraform apply -var-file="vars/dev.tfvars"
+   ```
+
+---
+
+#### Adding Archive Nodes
+
+Archive nodes store full blockchain history.
+
+**Steps:**
+
+1. **Edit Configuration**
+
+   ```hcl
+   # vars/dev.tfvars
+   archive_node_count = 2  # Increased from 1
+   ```
+
+2. **Review and Apply**
+
+   ```bash
+   terraform plan -var-file="vars/dev.tfvars"
+   terraform apply -var-file="vars/dev.tfvars"
+   ```
+
+**Result:**
+
+- Creates `node-archive-2`
+- Existing archive node unchanged
+- New node syncs full history
+
+---
+
+#### Adding Block Indexer
+
+Block Indexer provides indexed blockchain data access.
+
+**Prerequisites:**
+
+- EVM Gateway must be enabled
+
+**Steps:**
+
+1. **Edit Configuration**
+
+   ```hcl
+   # vars/dev.tfvars
+   enable_block_indexer = true
+   block_indexer_name   = "block-indexer"
+   ```
+
+2. **Apply Changes**
+
+   ```bash
+   terraform apply -var-file="vars/dev.tfvars"
+   ```
+
+**Result:**
+
+- Creates Block Indexer runtime and service
+- Connects to EVM Gateway
+- Starts indexing from genesis
+
+---
+
+#### Adding EVM Gateway
+
+EVM Gateway provides JSON-RPC interface to the blockchain.
+
+**Steps:**
+
+1. **Edit Configuration**
+
+   ```hcl
+   # vars/dev.tfvars
+   enable_evm_gateway = true
+   evm_gateway_name   = "evm-gateway"
+   ```
+
+2. **Apply Changes**
+
+   ```bash
+   terraform apply -var-file="vars/dev.tfvars"
+   ```
+
+**Result:**
+
+- Creates EVM Gateway runtime and service
+- Provides JSON-RPC endpoints
+- Required for Firefly integration
+
+---
+
+#### Adding Firefly Middleware
+
+Add complete Firefly middleware stack to existing blockchain.
+
+**Prerequisites:**
+
+- Blockchain network must be deployed
+- EVM Gateway must be enabled
+
+**Steps:**
+
+1. **Edit Configuration**
+
+   ```hcl
+   # vars/dev.tfvars
+   enable_firefly = true
+
+   # Stack name
+   firefly_stack_name = "firefly-middleware-stack"
+
+   # Core services
+   enable_firefly_core        = true
+   firefly_core_name          = "firefly-core"
+
+   enable_transaction_manager = true
+   transaction_manager_name   = "firefly-txmanager"
+
+   enable_key_manager         = true
+   key_manager_name           = "firefly-signer"
+   key_manager_type           = "HDWalletSigner"
+
+   enable_contract_manager    = true
+   contract_manager_name      = "firefly-contracts"
+
+   # Database
+   firefly_database_type = "postgres"
+   ```
+
+2. **Review Changes**
+
+   ```bash
+   terraform plan -var-file="vars/dev.tfvars"
+   ```
+
+   Expected: ~20-25 resources to add
+
+3. **Apply Changes**
+
+   ```bash
+   terraform apply -var-file="vars/dev.tfvars"
+   ```
+
+**Result:**
+
+- Creates Firefly middleware stack
+- Deploys all enabled services
+- Connects to existing blockchain via EVM Gateway
+- Creates wallet and keys
+
+**Deployment Time:** ~5-10 minutes
+
+---
+
+#### Adding Individual Firefly Services
+
+Add specific services to existing Firefly stack.
+
+##### Adding Transaction Manager
+
+```hcl
+# vars/dev.tfvars
+enable_transaction_manager = true
+transaction_manager_name   = "firefly-txmanager"
+
+# Optional: Custom configuration
+transaction_manager_config = {
+  maxInFlight   = 100
+  gasOracleMode = "connector"
+  txTimeout     = 300
+  autoRetry     = true
+}
+```
+
+##### Adding Contract Manager
+
+```hcl
+# vars/dev.tfvars
+enable_contract_manager = true
+contract_manager_name   = "firefly-contracts"
+
+# Optional: Custom configuration
+contract_manager_config = {
+  autoConfirm     = true
+  confirmations   = 12
+  defaultGasLimit = 5000000
+  verifyBytecode  = true
+}
+```
+
+##### Adding Key Manager
+
+```hcl
+# vars/dev.tfvars
+enable_key_manager = true
+key_manager_name   = "firefly-signer"
+key_manager_type   = "HDWalletSigner"  # or "FireFlySigner"
+
+# Optional: Custom configuration
+key_manager_config = {
+  keystorePath     = "/data/keystore"
+  signingAlgorithm = "secp256k1"
+  hsmEnabled       = false
+}
+```
+
+**Apply:**
+
+```bash
+terraform apply -var-file="vars/dev.tfvars"
+```
+
+---
+
+### Deleting Components
+
+#### Important Warnings
+
+- **Data Loss:** Deleting components results in permanent data loss
+- **Dependencies:** Check dependencies before deletion
+- **Backups:** Always backup critical data before deletion
+- **Validator Quorum:** Maintain minimum validators for consensus
+
+---
+
+#### Removing Nodes
+
+##### Removing Validator Nodes
+
+**CRITICAL:** Ensure you maintain consensus quorum!
+
+For QBFT consensus:
+
+- Minimum: 4 validators
+- Formula: 3f + 1 (where f = Byzantine fault tolerance)
+
+**Steps:**
+
+1. **Check Current Count**
+
+   ```bash
+   terraform output validator_node_names
+   # Output: ["node-validator-1", "node-validator-2", "node-validator-3", "node-validator-4"]
+   ```
+
+2. **Edit Configuration**
+
+   ```hcl
+   # vars/dev.tfvars
+   validator_node_count = 4  # Decreased from 6
+   ```
+
+3. **Review Deletion**
+
+   ```bash
+   terraform plan -var-file="vars/dev.tfvars"
+   ```
+
+   Expected:
+
+   ```
+   Plan: 0 to add, 0 to change, 4 to destroy
+
+   - module.blockchain_chain.kaleido_platform_runtime.validator_runtime[4]
+   - module.blockchain_chain.kaleido_platform_service.validator_service[4]
+   - module.blockchain_chain.kaleido_platform_runtime.validator_runtime[5]
+   - module.blockchain_chain.kaleido_platform_service.validator_service[5]
+   ```
+
+4. **Apply Deletion**
+
+   ```bash
+   terraform apply -var-file="vars/dev.tfvars"
+   ```
+
+**Result:**
+
+- Deletes `node-validator-5` and `node-validator-6`
+- Remaining validators continue consensus
+- Network remains operational
+
+**Note:** Terraform destroys highest-indexed nodes first.
+
+---
+
+##### Removing Archive Nodes
+
+**Safe operation** - no impact on consensus.
+
+```hcl
+# vars/dev.tfvars
+archive_node_count = 0  # Reduced from 2
+```
+
+Apply:
+
+```bash
+terraform apply -var-file="vars/dev.tfvars"
+```
+
+---
+
+#### Removing Services
+
+##### Removing Block Indexer
+
+**Steps:**
+
+1. **Edit Configuration**
+
+   ```hcl
+   # vars/dev.tfvars
+   enable_block_indexer = false
+   ```
+
+2. **Apply Changes**
+
+   ```bash
+   terraform apply -var-file="vars/dev.tfvars"
+   ```
+
+**Result:**
+
+- Deletes Block Indexer service and runtime
+- Indexed data is lost
+- EVM Gateway remains operational
+
+---
+
+##### Removing EVM Gateway
+
+**WARNING:** EVM Gateway is required by:
+
+- Transaction Manager
+- Firefly Core
+- Block Indexer
+
+**Proper Deletion Order:**
+
+1. **First, disable dependent services:**
+
+   ```hcl
+   # vars/dev.tfvars
+
+   # Step 1: Disable Firefly
+   enable_firefly = false
+
+   # Step 2: Disable Block Indexer
+   enable_block_indexer = false
+   ```
+
+2. **Apply to remove dependents:**
+
+   ```bash
+   terraform apply -var-file="vars/dev.tfvars"
+   ```
+
+3. **Now safe to disable EVM Gateway:**
+
+   ```hcl
+   # vars/dev.tfvars
+   enable_evm_gateway = false
+   ```
+
+4. **Apply final deletion:**
+
+   ```bash
+   terraform apply -var-file="vars/dev.tfvars"
+   ```
+
+---
+
+#### Removing Firefly Stack
+
+##### Removing Individual Firefly Services
+
+**Safe to remove** (no dependents):
+
+```hcl
+# vars/dev.tfvars
+enable_contract_manager = false  # Safe
+```
+
+**Has dependents:**
+
+- `enable_transaction_manager` ← Required by Firefly Core
+- `enable_key_manager` ← Required by Transaction Manager
+
+**Proper order for removing TX Manager:**
+
+1. Disable Firefly Core first
+2. Then disable Transaction Manager
+3. Then disable Key Manager (if needed)
+
+```hcl
+# vars/dev.tfvars
+enable_firefly_core        = false  # Step 1
+enable_transaction_manager = false  # Step 2
+enable_key_manager         = false  # Step 3
+```
+
+---
+
+##### Removing Entire Firefly Stack
+
+**Steps:**
+
+1. **Edit Configuration**
+
+   ```hcl
+   # vars/dev.tfvars
+   enable_firefly = false
+   ```
+
+2. **Review Deletion**
+
+   ```bash
+   terraform plan -var-file="vars/dev.tfvars"
+   ```
+
+   Expected: ~20-25 resources to destroy
+
+3. **Apply Deletion**
+
+   ```bash
+   terraform apply -var-file="vars/dev.tfvars"
+   ```
+
+**Result:**
+
+- Deletes all Firefly services
+- Deletes Firefly stack
+- **Deletes wallet and keys** - backup first!
+- Blockchain network remains intact
+
+---
+
+### Safe Deletion Order
+
+To avoid dependency errors, delete in this order:
+
+1. Firefly Core
+2. Contract Manager
+3. Transaction Manager
+4. Key Manager
+5. Block Indexer
+6. EVM Gateway
+7. Archive Nodes
+8. Validator Nodes (maintaining quorum)
+9. Network
+
+---
+
 ### Alternative: Use Separate Configuration Files
 
 If you want separate configs for blockchain-only and full stack:

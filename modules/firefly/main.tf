@@ -18,7 +18,12 @@ resource "kaleido_platform_runtime" "key_manager_runtime" {
   type        = "KeyManager"
   name        = var.key_manager_name
   environment = var.environment_id
-  config_json = jsonencode({})
+  config_json = jsonencode(merge(
+    {
+      type = var.key_manager_type
+    },
+    { for k, v in var.key_manager_config : k => v if v != null }
+  ))
 }
 
 resource "kaleido_platform_service" "key_manager_service" {
@@ -59,7 +64,7 @@ resource "kaleido_platform_runtime" "transaction_manager_runtime" {
   name        = var.transaction_manager_name
   environment = var.environment_id
   stack_id    = kaleido_platform_stack.firefly_stack.id
-  config_json = jsonencode({})
+  config_json = jsonencode({ for k, v in var.transaction_manager_config : k => v if v != null })
 }
 
 resource "kaleido_platform_service" "transaction_manager_service" {
@@ -70,61 +75,27 @@ resource "kaleido_platform_service" "transaction_manager_service" {
   stack_id    = kaleido_platform_stack.firefly_stack.id
   runtime     = kaleido_platform_runtime.transaction_manager_runtime[0].id
 
-  config_json = jsonencode(merge(
-    {
-      keyManager = var.enable_key_manager ? {
-        id = kaleido_platform_service.key_manager_service[0].id
-      } : null
-      type = "evm"
-      evm = {
-        confirmations = {
-          required = var.transaction_manager_confirmations
-        }
-        connector = {
-          evmGateway = {
-            id = var.evm_gateway_service_id
-          }
+  config_json = jsonencode({
+    keyManager = var.enable_key_manager ? {
+      id = kaleido_platform_service.key_manager_service[0].id
+    } : null
+    type = "evm"
+    evm = {
+      confirmations = {
+        required = var.transaction_manager_confirmations
+      }
+      connector = {
+        evmGateway = {
+          id = var.evm_gateway_service_id
         }
       }
-    },
-    var.transaction_manager_config
-  ))
+    }
+  })
 
   depends_on = [
     kaleido_platform_service.key_manager_service
   ]
 }
-
-
-# Private Data Manager
-
-# Manages private data exchange between parties
-
-resource "kaleido_platform_runtime" "private_data_manager_runtime" {
-  count       = var.enable_private_data_manager ? 1 : 0
-  type        = "PrivateDataManager"
-  name        = var.private_data_manager_name
-  environment = var.environment_id
-  stack_id    = kaleido_platform_stack.firefly_stack.id
-  config_json = jsonencode({})
-}
-
-resource "kaleido_platform_service" "private_data_manager_service" {
-  count       = var.enable_private_data_manager ? 1 : 0
-  type        = "PrivateDataManager"
-  name        = var.private_data_manager_name
-  environment = var.environment_id
-  stack_id    = kaleido_platform_stack.firefly_stack.id
-  runtime     = kaleido_platform_runtime.private_data_manager_runtime[0].id
-
-  config_json = jsonencode(merge(
-    {
-      dataExchangeType = "https"
-    },
-    var.private_data_manager_config
-  ))
-}
-
 
 
 # Contract Manager
@@ -136,7 +107,7 @@ resource "kaleido_platform_runtime" "contract_manager_runtime" {
   type        = "ContractManager"
   name        = var.contract_manager_name
   environment = var.environment_id
-  config_json = jsonencode({})
+  config_json = jsonencode({ for k, v in var.contract_manager_config : k => v if v != null })
 }
 
 resource "kaleido_platform_service" "contract_manager_service" {
@@ -171,18 +142,16 @@ resource "kaleido_platform_service" "firefly_core_service" {
   stack_id    = kaleido_platform_stack.firefly_stack.id
   runtime     = kaleido_platform_runtime.firefly_core_runtime[0].id
 
-  config_json = jsonencode({
-    transactionManager = var.enable_transaction_manager ? {
-      id = kaleido_platform_service.transaction_manager_service[0].id
-    } : null
-    privatedatamanager = var.enable_private_data_manager ? {
-      id = kaleido_platform_service.private_data_manager_service[0].id
-    } : null
-  })
+  config_json = jsonencode(
+    var.enable_transaction_manager ? {
+      transactionManager = {
+        id = kaleido_platform_service.transaction_manager_service[0].id
+      }
+    } : {}
+  )
 
   depends_on = [
-    kaleido_platform_service.transaction_manager_service,
-    kaleido_platform_service.private_data_manager_service
+    kaleido_platform_service.transaction_manager_service
   ]
 }
 
