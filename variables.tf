@@ -1,20 +1,33 @@
-# Kaleido Platform API Credentials
-variable "kaleido_platform_api" {
-  description = "Kaleido Platform API endpoint"
+# HashiCorp Vault Configuration
+variable "vault_address" {
+  description = "HashiCorp Vault server address"
   type        = string
-  default     = "https://api.kaleido.io/api/v1"
+  default     = "http://127.0.0.1:8200"
 }
 
-variable "kaleido_platform_username" {
-  description = "Kaleido Platform username (email)"
+variable "vault_token" {
+  description = "HashiCorp Vault authentication token (also can be set via VAULT_TOKEN env var)"
   type        = string
   sensitive   = true
+  default     = ""
 }
 
-variable "kaleido_platform_api_key" {
-  description = "Kaleido Platform password or API key"
+variable "vault_secret_mount" {
+  description = "Vault KV secrets engine mount path"
   type        = string
-  sensitive   = true
+  default     = "secret"
+}
+
+variable "vault_skip_tls_verify" {
+  description = "Skip TLS verification for Vault (only for dev/testing)"
+  type        = bool
+  default     = false
+}
+
+variable "vault_environment" {
+  description = "Environment name for Vault path lookup (dev, sit, prod)"
+  type        = string
+  default     = "dev"
 }
 
 # Environment Configuration

@@ -22,122 +22,318 @@ This repository contains Terraform scripts to deploy:
 
 All services are deployed in a single, managed stack for easy configuration and maintenance.
 
-## Quick Start - Unified Deployment (Blockchain + Firefly)
+## Secrets Management with HashiCorp Vault
 
-The `vars/dev.tfvars` file contains a **unified configuration** that deploys both blockchain and Firefly middleware together.
+This project uses **HashiCorp Vault** for secure, centralized configuration management. **ALL** configuration (40+ parameters including credentials, network settings, node configuration, etc.) is stored in Vault and retrieved dynamically by Terraform.
 
-### 1. Review Configuration
+### What's Stored in Vault
+
+**Everything except:**
+
+- `vault_environment` - Which Vault path to read (dev/sit/prod)
+- `enable_firefly` - Must be known at plan time for Terraform count
+
+**All other configuration** (40+ parameters):
+
+- API credentials (endpoint, username, API key, environment ID)
+- Network configuration (name, type, consensus, block period)
+- Node configuration (counts, sizes, naming)
+- Service settings (block indexer, EVM gateway)
+- Firefly configuration (all services and settings)
+- Tags and metadata
+
+### Architecture
+
+`Vault → vault.tf (locals) → main.tf → modules (variables)`
+
+### Quick Setup
 
 ```bash
-# The dev.tfvars already includes both blockchain and Firefly settings
+# 1. Start Vault (development mode)
+vault server -dev
+
+# 2. In another terminal, configure Vault connection
+# NOTE: Makefile exports these automatically!
+export VAULT_ADDR='http://127.0.0.1:8200'
+export VAULT_TOKEN='<root-token-from-output>'
+
+# 3. Store ALL configuration in Vault using the provided script
+./vault-store-config.sh dev
+
+# 4. Run Terraform via Makefile (automatically uses Vault)
+make plan ENV=dev
+make apply ENV=dev
+```
+
+**Benefits of Vault:**
+
+- Centralized configuration and secret storage
+- All environments (dev/sit/prod) in one place
+- Automatic credential rotation capability
+- Complete audit logging
+- Granular access control
+- Encryption at rest
+
+For detailed information, see [Vault Integration Guide](docs/VAULT_INTEGRATION.md).
+
+---
+
+## Using Makefile (Recommended)
+
+The Makefile provides automated Vault integration and simplified commands.
+
+### Automatic Vault Configuration
+
+The Makefile **automatically exports** `VAULT_ADDR` and `VAULT_TOKEN`:
+
+```makefile
+export VAULT_ADDR ?= http://127.0.0.1:8200
+export VAULT_TOKEN ?= root
+```
+
+You can override these with environment variables if needed.
+
+### Available Commands
+
+```bash
+# Get help and see all commands
+make help
+
+# Vault operations
+make vault-check ENV=dev         # Verify Vault connection and credentials
+
+# Terraform operations
+make init ENV=dev                # Initialize Terraform
+make plan ENV=dev                # Show execution plan
+make apply ENV=dev               # Apply changes
+make apply-auto ENV=dev          # Apply without confirmation
+make destroy ENV=dev             # Destroy resources
+make output                      # Show outputs
+
+# Development shortcuts
+make dev-plan                    # Quick: make plan ENV=dev
+make dev-apply                   # Quick: make apply ENV=dev
+
+# Other environments
+make sit-plan                    # Plan for SIT environment
+make prod-apply                  # Apply to production
+
+# Utilities
+make validate                    # Validate configuration
+make fmt                         # Format Terraform files
+make state-list                  # List all resources
+make clean                       # Clean Terraform files
+```
+
+### Workflow Example
+
+```bash
+# 1. Check Vault connection
+make vault-check ENV=dev
+
+# 2. Initialize (first time only)
+make init ENV=dev
+
+# 3. Plan changes
+make plan ENV=dev
+
+# 4. Apply changes
+make apply ENV=dev
+
+# 5. View outputs
+make output
+```
+
+### Multi-Environment Support
+
+```bash
+# Development
+make plan ENV=dev
+make apply ENV=dev
+
+# SIT (System Integration Testing)
+make plan ENV=sit
+make apply ENV=sit
+
+# Production
+make plan ENV=prod
+make apply ENV=prod
+```
+
+Each environment has its own:
+
+- Vault path: `secret/kaleido/{environment}`
+- Tfvars file: `vars/{environment}.tfvars`
+- Separate credentials and configuration
+
+---
+
+## Quick Start - Unified Deployment (Blockchain + Firefly)
+
+All configuration is now stored in Vault. The `vars/dev.tfvars` file only contains 2 variables.
+
+### 1. Start Vault
+
+```bash
+# Start Vault in dev mode
+vault server -dev
+
+# Note the Root Token from the output
+```
+
+### 2. Store Configuration in Vault
+
+```bash
+# In another terminal, export Vault credentials
+export VAULT_ADDR='http://127.0.0.1:8200'
+export VAULT_TOKEN='hvs.xxxxxxxxxxxxx'  # Use Root Token from step 1
+
+# Store ALL configuration (40+ parameters) in Vault
+./vault-store-config.sh dev
+
+# Verify configuration was stored
+vault kv get secret/kaleido/dev
+```
+
+### 3. Review Minimal Configuration File
+
+```bash
 cat vars/dev.tfvars
 ```
 
-**Firefly is enabled by default** with all services configured:
+The file now contains only 2 variables:
 
-- Firefly Core
-- Transaction Manager
-- Private Data Manager
-- Key Manager
-- Contract Manager
-- Subscriptions
-- Event Listeners
-
-### 2. Initialize Terraform
-
-```bash
-terraform init
+```hcl
+vault_environment = "dev"  # Which Vault path to read
+enable_firefly = true      # Must be known at plan time
 ```
 
-### 3. Plan Deployment
+**All other configuration** (credentials, network settings, node counts, Firefly services, etc.) is loaded from Vault.
+
+### 4. Deploy Infrastructure
 
 ```bash
-terraform plan -var-file="vars/dev.tfvars"
+# Makefile automatically uses Vault credentials
+make init ENV=dev
+make plan ENV=dev
+make apply ENV=dev
 ```
 
-### 4. Deploy
-
-```bash
-terraform apply -var-file="vars/dev.tfvars"
-```
+**Note:** No need to manually export VAULT_ADDR/VAULT_TOKEN - Makefile does it automatically!
 
 ### 5. View Outputs
 
 ```bash
-terraform output
-
-terraform output firefly_deployment_summary
-
-terraform output firefly_all_service_ids
+make output
 ```
 
-## Customizing Firefly Configuration
+## Customizing Configuration
 
 ### Disable Firefly (Deploy Blockchain Only)
 
-Edit `vars/dev.tfvars` and set:
+Edit `vars/dev.tfvars`:
 
 ```hcl
-enable_firefly = false
+vault_environment = "dev"
+enable_firefly = false  # Change to false
 ```
 
 Then apply:
 
 ```bash
-terraform apply -var-file="vars/dev.tfvars"
+make apply ENV=dev
 ```
 
 ### Enable/Disable Individual Services
 
-In `vars/dev.tfvars`, toggle individual services:
+Individual service settings are stored in Vault. To modify:
 
-```hcl
-enable_firefly = true
+```bash
+# Update configuration in Vault
+vault kv patch secret/kaleido/dev \
+  enable_firefly_core=false \
+  enable_contract_manager=false
 
-# Individual service controls
-enable_firefly_core         = true
-enable_transaction_manager  = true
-enable_private_data_manager = false  # Disable this service
-enable_key_manager          = true
-enable_contract_manager     = false  # Disable this service
-enable_subscriptions        = true
-enable_event_listeners      = true
+# Apply changes
+make apply ENV=dev
 ```
 
-## Complete Parameter Reference from dev.tfvars
+Or update via the script:
 
-| Parameter                         | Can Change? | Notes                          |
-| --------------------------------- | ----------- | ------------------------------ |
-| `environment_name`                | YES         | Label only                     |
-| `network_name`                    | YES         | Updates in-place               |
-| `network_type`                    | NO          | Not tested                     |
-| `consensus_algorithm`             | YES         | Updates in-place               |
-| `block_period_seconds`            | YES         | Updates in-place               |
-| `validator_node_count`            | PARTIAL     | Adds/removes nodes             |
-| `archive_node_count`              | PARTIAL     | Adds/removes nodes             |
-| `validator_node_size`             | NO          | Ignored                        |
-| `archive_node_size`               | NO          | Ignored                        |
-| `node_name_prefix`                | NO          | Renames all nodes              |
-| `chain_infrastructure_stack_name` | NO          | Recreates stack (24 destroy)   |
-| `enable_block_indexer`            | YES         | Creates/destroys service       |
-| `enable_evm_gateway`              | YES         | Creates/destroys service       |
-| `block_indexer_name`              | YES         | Updates in-place               |
-| `evm_gateway_name`                | YES         | Updates in-place               |
-| `enable_firefly`                  | YES         | Creates/destroys stack         |
-| `firefly_stack_name`              | NO          | Recreates Firefly (24 destroy) |
-| `enable_firefly_core`             | YES         | Creates/destroys service       |
-| `firefly_core_name`               | YES         | Updates in-place               |
-| `enable_transaction_manager`      | YES         | Creates/destroys service       |
-| `transaction_manager_name`        | NO          | Not tested                     |
-| `transaction_manager_config.*`    | YES         | Updates runtime                |
-| `enable_key_manager`              | YES         | Creates/destroys service       |
-| `key_manager_name`                | NO          | Not tested                     |
-| `key_manager_type`                | YES         | Updates in-place               |
-| `key_manager_config.*`            | YES         | Updates runtime                |
-| `enable_contract_manager`         | YES         | Creates/destroys service       |
-| `contract_manager_name`           | NO          | Not tested                     |
-| `contract_manager_config.*`       | YES         | Updates runtime                |
-| `firefly_database_type`           | NO          | Data loss                      |
+```bash
+# Edit vault-store-config.sh with your desired settings
+# Then re-run:
+./vault-store-config.sh dev
+make apply ENV=dev
+```
+
+## Configuration Storage Overview
+
+### Variables in dev.tfvars (2 variables)
+
+| Parameter           | Location   | Notes                                     |
+| ------------------- | ---------- | ----------------------------------------- |
+| `vault_environment` | dev.tfvars | Which Vault path to read (dev/sit/prod)   |
+| `enable_firefly`    | dev.tfvars | Must be in tfvars (count must be at plan) |
+
+### All Other Configuration in Vault (40+ parameters)
+
+**Credentials:**
+
+- `api_endpoint`, `username`, `api_key`, `environment_id`, `environment_name`
+
+**Network Configuration:**
+
+- `network_name`, `network_type`, `consensus_algorithm`, `block_period_seconds`
+
+**Node Configuration:**
+
+- `validator_node_count`, `archive_node_count`, `load_test_node_count`
+- `validator_node_size`, `archive_node_size`, `load_test_node_size`
+- `node_name_prefix`, `force_delete_nodes`
+
+**Stack Configuration:**
+
+- `chain_infrastructure_stack_name`
+
+**Service Configuration:**
+
+- `enable_block_indexer`, `enable_evm_gateway`
+- `block_indexer_name`, `evm_gateway_name`
+
+**Firefly Configuration:**
+
+- `firefly_stack_name`, `firefly_version`
+- `enable_firefly_core`, `firefly_core_name`
+- `enable_transaction_manager`, `transaction_manager_name`, `transaction_manager_confirmations`
+- `enable_key_manager`, `key_manager_name`, `key_manager_type`
+- `enable_contract_manager`, `contract_manager_name`
+- `firefly_database_type`
+
+**Complex Configurations (JSON):**
+
+- `transaction_manager_config`
+- `key_manager_config`
+- `contract_manager_config`
+- `tags`
+
+### Modifying Configuration
+
+To change any Vault-stored parameter:
+
+```bash
+# Option 1: Patch specific values
+vault kv patch secret/kaleido/dev \
+  validator_node_count=6 \
+  archive_node_count=2
+
+# Option 2: Edit script and re-run
+vim vault-store-config.sh
+./vault-store-config.sh dev
+
+# Apply changes
+make apply ENV=dev
+```
 
 ## Component Management Guide
 
