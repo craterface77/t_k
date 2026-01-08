@@ -1,80 +1,140 @@
-# Kaleido Blockchain Infrastructure - Terraform
+# Kaleido Blockchain Terraform Provider
 
-Professional modular Terraform configuration for deploying blockchain infrastructure with Hyperledger Firefly middleware on Kaleido Platform.
+Production-ready Terraform configuration for deploying Hyperledger Besu blockchain networks with Hyperledger Firefly middleware on Kaleido platform.
 
-## Overview
+## 🚀 Key Features
 
-This repository contains Terraform scripts to deploy:
+- **Unified Configuration**: Single codebase supporting both HDWallet (local) and Azure Key Vault (HSM-backed remote signing)
+- **HashiCorp Vault Integration**: All 49 configuration parameters stored securely in Vault
+- **Automatic Mode Detection**: Switches between HDWallet and Azure Key Vault based on `key_manager_type` parameter
+- **Production Ready**: No hardcoded credentials, follows security best practices
+- **Modular Architecture**: Clean separation of blockchain chain and Firefly middleware components
 
-- **Blockchain Network** (Hyperledger Besu/GoQuorum)
+## 📋 Architecture Overview
+
+This repository deploys:
+
+- **Blockchain Network** (Hyperledger Besu)
   - Validator nodes
   - Archive nodes
   - EVM Gateway
   - Block Indexer
-- **Hyperledger Firefly Middleware** (Optional)
+- **Hyperledger Firefly Middleware**
   - Firefly Core
   - Transaction Manager
-  - Private Data Manager
-  - Key Manager
+  - Key Manager (HDWallet OR Azure Key Vault)
   - Contract Manager
-  - Subscriptions
-  - Event Listeners
+- **Azure Key Vault Integration** (Optional, Production)
+  - HSM-backed signing keys
+  - FIPS 140-2 Level 3 compliance
+  - Keys never leave Azure Key Vault
 
-All services are deployed in a single, managed stack for easy configuration and maintenance.
+## 🔐 HashiCorp Vault Integration
 
-## Secrets Management with HashiCorp Vault
+All 49 configuration parameters are stored securely in HashiCorp Vault.
 
-This project uses **HashiCorp Vault** for secure, centralized configuration management. **ALL** configuration (40+ parameters including credentials, network settings, node configuration, etc.) is stored in Vault and retrieved dynamically by Terraform.
+### Configuration Architecture
 
-### What's Stored in Vault
-
-**Everything except:**
-
-- `vault_environment` - Which Vault path to read (dev/sit/prod)
-- `enable_firefly` - Must be known at plan time for Terraform count
-
-**All other configuration** (40+ parameters):
-
-- API credentials (endpoint, username, API key, environment ID)
-- Network configuration (name, type, consensus, block period)
-- Node configuration (counts, sizes, naming)
-- Service settings (block indexer, EVM gateway)
-- Firefly configuration (all services and settings)
-- Tags and metadata
-
-### Architecture
-
-`Vault → vault.tf (locals) → main.tf → modules (variables)`
-
-### Quick Setup
-
-```bash
-# 1. Start Vault (development mode)
-vault server -dev
-
-# 2. In another terminal, configure Vault connection
-# NOTE: Makefile exports these automatically!
-export VAULT_ADDR='http://127.0.0.1:8200'
-export VAULT_TOKEN='<root-token-from-output>'
-
-# 3. Store ALL configuration in Vault using the provided script
-./vault-store-config.sh dev
-
-# 4. Run Terraform via Makefile (automatically uses Vault)
-make plan ENV=dev
-make apply ENV=dev
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    HashiCorp Vault                          │
+│              (49 configuration parameters)                  │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   Terraform (main.tf)                        │
+│                                                              │
+│  Conditional: key_manager_type == "AzureKeyVaultSigner"     │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  Azure Key Vault Module (count = 0 or 1)            │   │
+│  │  - Create/Use Key Vault                              │   │
+│  │  - Create/Use HSM Signing Key                        │   │
+│  │  - Configure Network Security                        │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  Blockchain Chain Module                             │   │
+│  │  - Validator/Archive Nodes                           │   │
+│  │  - Block Indexer + EVM Gateway                       │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  Firefly Middleware Module                           │   │
+│  │  - Key Manager (HDWallet OR Azure Key Vault)        │   │
+│  │  - Transaction Manager + Contract Manager            │   │
+│  │  - Firefly Core                                      │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Benefits of Vault:**
+### What's in Vault vs tfvars
 
-- Centralized configuration and secret storage
-- All environments (dev/sit/prod) in one place
-- Automatic credential rotation capability
-- Complete audit logging
-- Granular access control
-- Encryption at rest
+**In tfvars (Only 2 parameters):**
+- `vault_environment` - Which Vault path to read (dev/prod)
+- `enable_firefly` - Must be known at plan time for Terraform count
 
-For detailed information, see [Vault Integration Guide](docs/VAULT_INTEGRATION.md).
+**In Vault (49 parameters):**
+- **Common (35 parameters):** Kaleido credentials, network config, node config, Firefly services, tags
+- **Azure-specific (14 parameters):** Azure AD, Key Vault infrastructure, signing key config, network security
+
+## 🚦 Quick Start
+
+### 1. Start HashiCorp Vault
+
+#### Development
+```bash
+vault server -dev -dev-root-token-id=root &
+export VAULT_ADDR='http://127.0.0.1:8200'
+export VAULT_TOKEN='root'
+```
+
+#### Production
+See [PRODUCTION_SETUP_GUIDE.md](PRODUCTION_SETUP_GUIDE.md)
+
+### 2. Store Configuration in Vault
+
+#### For Development (HDWallet)
+```bash
+# Edit with your Kaleido credentials
+vim vault-store-config-hdwallet.sh
+
+# Run script
+./vault-store-config-hdwallet.sh dev
+```
+
+#### For Production (Azure Key Vault)
+```bash
+# Edit with your Azure and Kaleido credentials
+vim vault-store-config-azure-keyvault.sh
+
+# Set Azure client secret
+export AZURE_CLIENT_SECRET='your-service-principal-password'
+
+# Run script
+./vault-store-config-azure-keyvault.sh prod
+```
+
+### 3. Configure Azure Provider (Production Only)
+
+```bash
+export ARM_SUBSCRIPTION_ID="your-azure-subscription-id"
+export ARM_TENANT_ID="your-azure-tenant-id"
+export ARM_CLIENT_ID="your-service-principal-client-id"
+export ARM_CLIENT_SECRET="your-service-principal-password"
+```
+
+### 4. Deploy
+
+```bash
+# Development
+make plan ENV=dev
+make apply ENV=dev
+
+# Production
+make plan ENV=prod
+make apply ENV=prod
+```
 
 ---
 
@@ -1014,10 +1074,132 @@ terraform apply -var="force_delete_nodes=true" -var-file="vars/your-config.tfvar
 terraform destroy -var-file="vars/your-config.tfvars"
 ```
 
-## Support
+## 🔄 Switching Between Signing Modes
 
-For issues or questions:
+### From HDWallet to Azure Key Vault
 
-1. Check the Kaleido documentation
-2. Review Terraform logs: `terraform show`
-3. Validate configuration: `terraform validate`
+```bash
+# 1. Add Azure configuration to Vault
+export AZURE_CLIENT_SECRET='your-secret'
+./vault-store-config-azure-keyvault.sh prod
+
+# 2. Set ARM environment variables
+export ARM_SUBSCRIPTION_ID="..."
+export ARM_TENANT_ID="..."
+export ARM_CLIENT_ID="..."
+export ARM_CLIENT_SECRET="..."
+
+# 3. Apply
+make apply ENV=prod
+```
+
+Terraform automatically:
+- Creates Azure Key Vault module
+- Updates Firefly wallet to type `azurekeyvault`
+- Removes local key resource
+
+### From Azure Key Vault to HDWallet
+
+```bash
+# 1. Update configuration in Vault
+vault kv patch secret/kaleido/dev \
+  key_manager_type="HDWalletSigner" \
+  key_manager_config='{"keystorePath":"/data/keystore"}'
+
+# 2. Apply
+make apply ENV=dev
+```
+
+Terraform automatically:
+- Removes Azure Key Vault module
+- Updates Firefly wallet to type `hdwallet`
+- Creates local key resource
+
+## 📊 Configuration Comparison
+
+| Feature | HDWallet (Dev) | Azure Key Vault (Prod) |
+|---------|----------------|------------------------|
+| **Signing Method** | Local HDWallet | Remote HSM signing |
+| **Key Storage** | Kaleido platform | Azure Key Vault HSM |
+| **Security Level** | Development | FIPS 140-2 Level 3 |
+| **Azure Setup** | Not required | Required |
+| **Terraform Module** | Azure module NOT created | Azure module created |
+| **Best For** | Development/Testing | Production deployments |
+
+## 📖 Documentation
+
+- [PRODUCTION_SETUP_GUIDE.md](PRODUCTION_SETUP_GUIDE.md) - Complete production deployment guide with Azure setup
+- [UNIFIED_MAIN_CONFIGURATION.md](docs/UNIFIED_MAIN_CONFIGURATION.md) - Technical details of unified configuration
+- [TESTING_RESULTS.md](docs/TESTING_RESULTS.md) - Test results for both HDWallet and Azure Key Vault modes
+- [AZURE_VAULT_PARAMETERS.md](docs/AZURE_VAULT_PARAMETERS.md) - Complete Azure parameter reference
+
+## 🎯 Design Principles
+
+1. **Single Source of Truth**: All configuration in HashiCorp Vault
+2. **Minimal tfvars**: Only 2 parameters (vault_environment, enable_firefly)
+3. **Automatic Mode Detection**: No manual switching required - based on `key_manager_type` in Vault
+4. **Conditional Resources**: Azure module created only when `key_manager_type = "AzureKeyVaultSigner"`
+5. **Safe Defaults**: lookup() with defaults for optional Azure parameters
+6. **Production Ready**: No hardcoded credentials or fake test data
+
+## ✅ Production Readiness
+
+**System Status: FULLY PRODUCTION READY! 🚀**
+
+- ✅ All 49 parameters from Vault
+- ✅ Unified main.tf supporting both HDWallet and Azure Key Vault
+- ✅ Conditional Azure module creation (`count = 0` or `1`)
+- ✅ No hardcoded constants
+- ✅ No fake credentials
+- ✅ Production-ready Azure provider
+- ✅ Complete documentation
+- ✅ Security best practices implemented
+
+## 🐛 Troubleshooting
+
+### Vault Connection Refused
+```bash
+# Check Vault is running
+vault status
+
+# Verify environment variables
+echo $VAULT_ADDR
+echo $VAULT_TOKEN
+```
+
+### Azure Provider Authentication Failed
+```bash
+# Verify ARM environment variables
+echo $ARM_SUBSCRIPTION_ID
+echo $ARM_TENANT_ID
+echo $ARM_CLIENT_ID
+
+# Test Azure login
+az login --service-principal \
+  --username $ARM_CLIENT_ID \
+  --password $ARM_CLIENT_SECRET \
+  --tenant $ARM_TENANT_ID
+```
+
+### Azure Module Created When Not Needed
+```bash
+# Check key_manager_type in Vault
+vault kv get -field=key_manager_type secret/kaleido/dev
+# Should be "HDWalletSigner" for dev
+
+# Fix if incorrect
+vault kv patch secret/kaleido/dev \
+  key_manager_type="HDWalletSigner"
+```
+
+## 🤝 Support
+
+For issues related to:
+- **Kaleido Platform**: [Kaleido Documentation](https://docs.kaleido.io/)
+- **Azure Key Vault**: [Azure Documentation](https://docs.microsoft.com/en-us/azure/key-vault/)
+- **HashiCorp Vault**: [Vault Documentation](https://www.vaultproject.io/docs)
+- **Terraform**: [Terraform Documentation](https://www.terraform.io/docs)
+
+## 📝 License
+
+This configuration is provided as-is for use with Kaleido blockchain platform.

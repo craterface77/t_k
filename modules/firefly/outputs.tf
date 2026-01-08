@@ -95,6 +95,7 @@ output "firefly_deployment_summary" {
     firefly_core_enabled        = var.enable_firefly_core
     transaction_manager_enabled = var.enable_transaction_manager
     key_manager_enabled         = var.enable_key_manager
+    key_manager_type            = var.key_manager_type
     contract_manager_enabled    = var.enable_contract_manager
     database_type               = var.database_type
   }

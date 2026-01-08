@@ -91,24 +91,20 @@ variable "key_manager_name" {
 }
 
 variable "key_manager_type" {
-  description = "Type of key manager (FireFlySigner, HDWalletSigner)"
+  description = "Type of key manager (FireFlySigner, HDWalletSigner, AzureKeyVaultSigner)"
   type        = string
-  default     = "FireFlySigner"
+  default     = "HDWalletSigner"
 
   validation {
-    condition     = contains(["FireFlySigner", "HDWalletSigner"], var.key_manager_type)
-    error_message = "Key manager type must be one of: FireFlySigner, HDWalletSigner"
+    condition     = contains(["FireFlySigner", "HDWalletSigner", "AzureKeyVaultSigner"], var.key_manager_type)
+    error_message = "Key manager type must be one of: FireFlySigner, HDWalletSigner, AzureKeyVaultSigner"
   }
 }
 
 variable "key_manager_config" {
-  description = "Custom configuration for key manager"
-  type = object({
-    keystorePath     = optional(string)
-    signingAlgorithm = optional(string)
-    hsmEnabled       = optional(bool)
-  })
-  default = {}
+  description = "Custom configuration for key manager (flexible for all types)"
+  type        = map(any)
+  default     = {}
 }
 
 

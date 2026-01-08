@@ -35,18 +35,51 @@ resource "kaleido_platform_service" "key_manager_service" {
   config_json = jsonencode({})
 }
 
-# Create wallet and key for Firefly
+# Create wallet for Firefly
+# Wallet is ALWAYS created, but type changes based on key manager type
+
+locals {
+  # Map key manager type to wallet type (per Kaleido documentation)
+  wallet_type_map = {
+    "HDWalletSigner"      = "hdwallet"
+    "FireFlySigner"       = "hdwallet"
+    "AzureKeyVaultSigner" = "azurekeyvault"
+  }
+
+  wallet_type = lookup(local.wallet_type_map, var.key_manager_type, "hdwallet")
+
+  # Only create keys for local key managers (not for remote signers)
+  is_local_key_manager = contains(["HDWalletSigner", "FireFlySigner"], var.key_manager_type)
+
+  # For Azure Key Vault, extract config and creds
+  is_azure_keyvault = var.key_manager_type == "AzureKeyVaultSigner"
+}
+
 resource "kaleido_platform_kms_wallet" "firefly_wallet" {
   count       = var.enable_key_manager ? 1 : 0
-  type        = "hdwallet"
+  type        = local.wallet_type
   name        = "firefly_wallet"
   environment = var.environment_id
   service     = kaleido_platform_service.key_manager_service[0].id
-  config_json = jsonencode({})
+
+  # Configuration JSON - for Azure Key Vault includes vaultUrl, keyName, etc.
+  config_json = local.is_azure_keyvault ? jsonencode({
+    vaultUrl = lookup(var.key_manager_config, "vaultUrl", "")
+    keyName  = lookup(var.key_manager_config, "keyName", "")
+    tenantId = lookup(var.key_manager_config, "tenantId", "")
+  }) : jsonencode({})
+
+  # Credentials JSON - for Azure Key Vault includes clientId and clientSecret
+  creds_json = local.is_azure_keyvault ? jsonencode({
+    clientId     = lookup(var.key_manager_config, "clientId", "")
+    clientSecret = lookup(var.key_manager_config, "clientSecret", "")
+  }) : jsonencode({})
 }
 
+# Create key only for local key managers
+# Remote signers (Azure Key Vault) use keys that already exist in the remote system
 resource "kaleido_platform_kms_key" "firefly_org_key" {
-  count       = var.enable_key_manager ? 1 : 0
+  count       = local.is_local_key_manager ? 1 : 0
   name        = "firefly_org_key"
   environment = var.environment_id
   service     = kaleido_platform_service.key_manager_service[0].id

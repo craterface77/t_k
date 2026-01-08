@@ -10,6 +10,10 @@ terraform {
       source  = "hashicorp/vault"
       version = "~> 3.20"
     }
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -27,4 +31,17 @@ provider "kaleido" {
   platform_api      = local.kaleido_credentials.api_endpoint
   platform_username = local.kaleido_credentials.username
   platform_password = local.kaleido_credentials.api_key
+}
+
+# Azure Provider (only needed if using Azure Key Vault remote signing)
+# NOTE: This provider is always configured, but Azure resources are only created
+# when key_manager_type = "AzureKeyVaultSigner" (via count in module)
+#
+# Authentication via environment variables (recommended for production):
+# export ARM_SUBSCRIPTION_ID="your-azure-subscription-id"
+# export ARM_TENANT_ID="your-azure-tenant-id"
+# export ARM_CLIENT_ID="your-service-principal-client-id"
+# export ARM_CLIENT_SECRET="your-service-principal-secret"
+provider "azurerm" {
+  features {}
 }
