@@ -1,0 +1,579 @@
+# Azure DevOps Pipeline for Terraform
+# Integrated with HashiCorp Vault and Artifactory
+# Uses Docker containers for Terraform and Vault CLI
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - "*.tf"
+      - "modules/**"
+      - "vars/**"
+      - "azure-pipelines.yml"
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+
+parameters:
+  - name: environment
+    type: string
+    displayName: Environment
+    default: dev
+    values:
+      - dev
+      - prod
+  - name: action
+    type: string
+    displayName: Terraform Action
+    default: plan
+    values:
+      - validate
+      - plan
+      - apply
+      - destroy
+  - name: releaseId
+    type: string
+    displayName: Release WorkItem ID
+    default: ""
+
+variables:
+  - name: BRANCH_NAME
+    value: $(Build.SourceBranchName)
+  - name: TF_VERSION
+    value: "1.6.0"
+  - name: VAULT_VERSION
+    value: "1.15.0"
+  - name: VAULT_ADDR
+    value: $(VAULT_ADDR_VAR)
+  - name: ARTIFACTORY_URL
+    value: $(ARTIFACTORY_URL_VAR)
+  - name: BUILD_ID
+    value: $(Build.BuildId)
+  - name: ARTIFACT_NAME
+    value: "terraform-$(BRANCH_NAME)-$(Build.BuildId)"
+
+pool:
+  name: "sc-linux"
+
+stages:
+  # Stage 1: Validate Terraform Configuration
+  - stage: Validate
+    displayName: "Terraform Validate"
+    jobs:
+      - job: TerraformValidate
+        displayName: "Validate Terraform Configuration"
+        container:
+          image: hashicorp/terraform:1.6.0
+          options: --user root
+        steps:
+          - checkout: self
+            displayName: "Checkout code"
+
+          - script: |
+              echo "Running Terraform format check..."
+              terraform fmt -check -recursive
+            displayName: "Terraform Format Check"
+            continueOnError: true
+
+          - script: |
+              echo "Initializing Terraform (backend disabled for validation)..."
+              terraform init -backend=false
+            displayName: "Terraform Init"
+
+          - script: |
+              echo "Validating Terraform configuration..."
+              terraform validate
+            displayName: "Terraform Validate"
+
+          - script: |
+              echo "Verifying node configurations..."
+              chmod +x ./verify-node-config.sh
+              ./verify-node-config.sh
+            displayName: "Verify Node Configuration"
+            continueOnError: false
+
+  # Stage 2: Plan for Development
+  - stage: PlanDev
+    displayName: "Plan (Development)"
+    dependsOn: Validate
+    condition: |
+      and(
+        succeeded(),
+        or(
+          eq(variables['Build.Reason'], 'PullRequest'),
+          eq(variables['Build.SourceBranch'], 'refs/heads/develop'),
+          and(eq(variables['Build.Reason'], 'Manual'), eq('${{ parameters.environment }}', 'dev'))
+        )
+      )
+    jobs:
+      - job: TerraformPlanDev
+        displayName: "Terraform Plan (Dev)"
+        container:
+          image: hashicorp/terraform:1.6.0
+          options: --user root
+        steps:
+          - checkout: self
+            displayName: "Checkout code"
+
+          # Import secrets from HashiCorp Vault using Vault container
+          - task: Bash@3
+            displayName: "Import Secrets from Vault (Dev)"
+            inputs:
+              targetType: "inline"
+              script: |
+                echo "Installing Vault CLI in container..."
+                apk add --no-cache curl unzip
+                curl -o vault.zip https://releases.hashicorp.com/vault/$(VAULT_VERSION)/vault_$(VAULT_VERSION)_linux_amd64.zip
+                unzip vault.zip
+                mv vault /usr/local/bin/
+                vault version
+
+                echo "Authenticating with HashiCorp Vault..."
+                export VAULT_TOKEN=$(VAULT_TOKEN)
+                export VAULT_ADDR=$(VAULT_ADDR)
+
+                echo "Retrieving secrets from Vault..."
+                vault kv get secret/kaleido/dev
+
+                echo "Secrets retrieved successfully from Vault"
+            env:
+              VAULT_TOKEN: $(VAULT_TOKEN)
+              VAULT_ADDR: $(VAULT_ADDR)
+
+          - script: |
+              echo "Initializing Terraform..."
+              terraform init
+            displayName: "Terraform Init"
+            env:
+              VAULT_TOKEN: $(VAULT_TOKEN)
+
+          - script: |
+              echo "Running Terraform plan for development..."
+              terraform plan -var-file="vars/dev.tfvars" -out=tfplan-dev
+            displayName: "Terraform Plan (Dev)"
+            env:
+              VAULT_TOKEN: $(VAULT_TOKEN)
+
+          # Upload plan to Artifactory
+          - task: Bash@3
+            displayName: "Upload Plan to Artifactory"
+            inputs:
+              targetType: "inline"
+              script: |
+                echo "Uploading Terraform plan to Artifactory..."
+
+                # Install curl if needed
+                apk add --no-cache curl
+
+                # Create artifact directory
+                mkdir -p artifacts
+                cp tfplan-dev artifacts/
+
+                # Compress plan
+                tar -czf $(ARTIFACT_NAME).tar.gz -C artifacts .
+
+                # Upload to Artifactory
+                curl -u $(ARTIFACTORY_USER):$(ARTIFACTORY_TOKEN) \
+                  -T $(ARTIFACT_NAME).tar.gz \
+                  "$(ARTIFACTORY_URL)/terraform-plans/dev/$(ARTIFACT_NAME).tar.gz"
+
+                echo "Plan uploaded successfully to Artifactory"
+            env:
+              ARTIFACTORY_USER: $(ARTIFACTORY_USER)
+              ARTIFACTORY_TOKEN: $(ARTIFACTORY_TOKEN)
+
+          # Publish plan as pipeline artifact (fallback)
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Plan Artifact"
+            inputs:
+              targetPath: "tfplan-dev"
+              artifact: "tfplan-dev"
+              publishLocation: "pipeline"
+
+          # Comment on PR with plan output (if PR)
+          - task: Bash@3
+            displayName: "Comment PR with Plan"
+            condition: eq(variables['Build.Reason'], 'PullRequest')
+            inputs:
+              targetType: "inline"
+              script: |
+                echo "Terraform plan for development environment"
+                terraform show tfplan-dev
+
+  # Stage 3: Apply for Development
+  - stage: ApplyDev
+    displayName: "Apply (Development)"
+    dependsOn: PlanDev
+    condition: |
+      and(
+        succeeded(),
+        or(
+          eq(variables['Build.SourceBranch'], 'refs/heads/develop'),
+          and(eq(variables['Build.Reason'], 'Manual'), eq('${{ parameters.action }}', 'apply'), eq('${{ parameters.environment }}', 'dev'))
+        )
+      )
+    jobs:
+      - deployment: TerraformApplyDev
+        displayName: "Terraform Apply (Dev)"
+        environment: development
+        container:
+          image: hashicorp/terraform:1.6.0
+          options: --user root
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  displayName: "Checkout code"
+
+                - task: Bash@3
+                  displayName: "Import Secrets from Vault (Dev)"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "Installing Vault CLI..."
+                      apk add --no-cache curl unzip
+                      curl -o vault.zip https://releases.hashicorp.com/vault/$(VAULT_VERSION)/vault_$(VAULT_VERSION)_linux_amd64.zip
+                      unzip vault.zip
+                      mv vault /usr/local/bin/
+
+                      export VAULT_TOKEN=$(VAULT_TOKEN)
+                      export VAULT_ADDR=$(VAULT_ADDR)
+
+                      export KALEIDO_API_ENDPOINT=$(vault kv get -field=api_endpoint secret/kaleido/dev)
+                      export KALEIDO_USERNAME=$(vault kv get -field=username secret/kaleido/dev)
+                      export KALEIDO_API_KEY=$(vault kv get -field=api_key secret/kaleido/dev)
+
+                      echo "##vso[task.setvariable variable=KALEIDO_API_ENDPOINT;issecret=true]$KALEIDO_API_ENDPOINT"
+                      echo "##vso[task.setvariable variable=KALEIDO_USERNAME;issecret=true]$KALEIDO_USERNAME"
+                      echo "##vso[task.setvariable variable=KALEIDO_API_KEY;issecret=true]$KALEIDO_API_KEY"
+                  env:
+                    VAULT_TOKEN: $(VAULT_TOKEN)
+                    VAULT_ADDR: $(VAULT_ADDR)
+
+                - script: |
+                    terraform init
+                  displayName: "Terraform Init"
+                  env:
+                    VAULT_TOKEN: $(VAULT_TOKEN)
+
+                # Download plan from Artifactory
+                - task: Bash@3
+                  displayName: "Download Plan from Artifactory"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "Downloading Terraform plan from Artifactory..."
+
+                      apk add --no-cache curl
+
+                      curl -u $(ARTIFACTORY_USER):$(ARTIFACTORY_TOKEN) \
+                        -o $(ARTIFACT_NAME).tar.gz \
+                        "$(ARTIFACTORY_URL)/terraform-plans/dev/$(ARTIFACT_NAME).tar.gz"
+
+                      tar -xzf $(ARTIFACT_NAME).tar.gz
+                      mv artifacts/tfplan-dev .
+                      echo "Plan downloaded successfully"
+                  env:
+                    ARTIFACTORY_USER: $(ARTIFACTORY_USER)
+                    ARTIFACTORY_TOKEN: $(ARTIFACTORY_TOKEN)
+
+                - script: |
+                    echo "Applying Terraform plan..."
+                    terraform apply -auto-approve tfplan-dev
+                  displayName: "Terraform Apply (Dev)"
+                  env:
+                    VAULT_TOKEN: $(VAULT_TOKEN)
+
+  # Stage 4: Plan for Production
+  - stage: PlanProd
+    displayName: "Plan (Production)"
+    dependsOn: Validate
+    condition: |
+      and(
+        succeeded(),
+        or(
+          eq(variables['Build.SourceBranch'], 'refs/heads/main'),
+          and(eq(variables['Build.Reason'], 'Manual'), eq('${{ parameters.environment }}', 'prod'))
+        )
+      )
+    jobs:
+      - job: TerraformPlanProd
+        displayName: "Terraform Plan (Prod)"
+        container:
+          image: hashicorp/terraform:1.6.0
+          options: --user root
+        steps:
+          - checkout: self
+            displayName: "Checkout code"
+
+          - task: Bash@3
+            displayName: "Import Secrets from Vault (Prod)"
+            inputs:
+              targetType: "inline"
+              script: |
+                echo "Installing Vault CLI..."
+                apk add --no-cache curl unzip
+                curl -o vault.zip https://releases.hashicorp.com/vault/$(VAULT_VERSION)/vault_$(VAULT_VERSION)_linux_amd64.zip
+                unzip vault.zip
+                mv vault /usr/local/bin/
+
+                echo "Authenticating with HashiCorp Vault..."
+                export VAULT_TOKEN=$(VAULT_TOKEN)
+                export VAULT_ADDR=$(VAULT_ADDR)
+
+                echo "Retrieving secrets from secret/data/kaleido/prod..."
+                vault kv get secret/kaleido/prod
+
+                echo "Secrets retrieved successfully from Vault"
+            env:
+              VAULT_TOKEN: $(VAULT_TOKEN)
+              VAULT_ADDR: $(VAULT_ADDR)
+
+          - script: |
+              echo "Setting Azure environment variables..."
+              export ARM_SUBSCRIPTION_ID=$(ARM_SUBSCRIPTION_ID)
+              export ARM_TENANT_ID=$(ARM_TENANT_ID)
+              export ARM_CLIENT_ID=$(ARM_CLIENT_ID)
+              export ARM_CLIENT_SECRET=$(ARM_CLIENT_SECRET)
+            displayName: "Set Azure Environment Variables"
+
+          - script: |
+              echo "Initializing Terraform..."
+              terraform init
+            displayName: "Terraform Init"
+            env:
+              VAULT_TOKEN: $(VAULT_TOKEN)
+              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+              ARM_TENANT_ID: $(ARM_TENANT_ID)
+              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+
+          - script: |
+              echo "Running Terraform plan for production..."
+              terraform plan -var-file="vars/prod.tfvars" -out=tfplan-prod
+            displayName: "Terraform Plan (Prod)"
+            env:
+              VAULT_TOKEN: $(VAULT_TOKEN)
+              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+              ARM_TENANT_ID: $(ARM_TENANT_ID)
+              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+
+          - task: Bash@3
+            displayName: "Upload Plan to Artifactory"
+            inputs:
+              targetType: "inline"
+              script: |
+                echo "Uploading Terraform plan to Artifactory..."
+
+                apk add --no-cache curl
+
+                mkdir -p artifacts
+                cp tfplan-prod artifacts/
+                tar -czf $(ARTIFACT_NAME).tar.gz -C artifacts .
+
+                # Upload to production path in Artifactory
+                curl -u $(ARTIFACTORY_USER):$(ARTIFACTORY_TOKEN) \
+                  -T $(ARTIFACT_NAME).tar.gz \
+                  "$(ARTIFACTORY_URL)/terraform-plans/prod/$(ARTIFACT_NAME).tar.gz"
+
+                echo "Plan uploaded successfully to Artifactory"
+            env:
+              ARTIFACTORY_USER: $(ARTIFACTORY_USER)
+              ARTIFACTORY_TOKEN: $(ARTIFACTORY_TOKEN)
+
+          - task: PublishPipelineArtifact@1
+            displayName: "Publish Plan Artifact"
+            inputs:
+              targetPath: "tfplan-prod"
+              artifact: "tfplan-prod"
+              publishLocation: "pipeline"
+
+  # Stage 5: Apply for Production
+  - stage: ApplyProd
+    displayName: "Apply (Production)"
+    dependsOn: PlanProd
+    condition: |
+      and(
+        succeeded(),
+        eq(variables['Build.Reason'], 'Manual'),
+        eq('${{ parameters.action }}', 'apply'),
+        eq('${{ parameters.environment }}', 'prod')
+      )
+    jobs:
+      - deployment: TerraformApplyProd
+        displayName: "Terraform Apply (Prod)"
+        environment: production
+        container:
+          image: hashicorp/terraform:1.6.0
+          options: --user root
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  displayName: "Checkout code"
+
+                - task: Bash@3
+                  displayName: "Import Secrets from Vault (Prod)"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "Installing Vault CLI..."
+                      apk add --no-cache curl unzip
+                      curl -o vault.zip https://releases.hashicorp.com/vault/$(VAULT_VERSION)/vault_$(VAULT_VERSION)_linux_amd64.zip
+                      unzip vault.zip
+                      mv vault /usr/local/bin/
+
+                      export VAULT_TOKEN=$(VAULT_TOKEN)
+                      export VAULT_ADDR=$(VAULT_ADDR)
+
+                      export KALEIDO_API_ENDPOINT=$(vault kv get -field=api_endpoint secret/kaleido/prod)
+                      export KALEIDO_USERNAME=$(vault kv get -field=username secret/kaleido/prod)
+                      export KALEIDO_API_KEY=$(vault kv get -field=api_key secret/kaleido/prod)
+                      export AZURE_TENANT_ID=$(vault kv get -field=azure_tenant_id secret/kaleido/prod)
+                      export AZURE_CLIENT_ID=$(vault kv get -field=azure_client_id secret/kaleido/prod)
+                      export AZURE_CLIENT_SECRET=$(vault kv get -field=azure_client_secret secret/kaleido/prod)
+
+                      echo "##vso[task.setvariable variable=KALEIDO_API_ENDPOINT;issecret=true]$KALEIDO_API_ENDPOINT"
+                      echo "##vso[task.setvariable variable=KALEIDO_USERNAME;issecret=true]$KALEIDO_USERNAME"
+                      echo "##vso[task.setvariable variable=KALEIDO_API_KEY;issecret=true]$KALEIDO_API_KEY"
+                      echo "##vso[task.setvariable variable=ARM_TENANT_ID;issecret=true]$AZURE_TENANT_ID"
+                      echo "##vso[task.setvariable variable=ARM_CLIENT_ID;issecret=true]$AZURE_CLIENT_ID"
+                      echo "##vso[task.setvariable variable=ARM_CLIENT_SECRET;issecret=true]$AZURE_CLIENT_SECRET"
+                  env:
+                    VAULT_TOKEN: $(VAULT_TOKEN)
+                    VAULT_ADDR: $(VAULT_ADDR)
+
+                - script: |
+                    terraform init
+                  displayName: "Terraform Init"
+                  env:
+                    VAULT_TOKEN: $(VAULT_TOKEN)
+                    ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+                    ARM_TENANT_ID: $(ARM_TENANT_ID)
+                    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+                    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+
+                - task: Bash@3
+                  displayName: "Download Plan from Artifactory"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "Downloading Terraform plan from Artifactory..."
+
+                      apk add --no-cache curl
+
+                      curl -u $(ARTIFACTORY_USER):$(ARTIFACTORY_TOKEN) \
+                        -o $(ARTIFACT_NAME).tar.gz \
+                        "$(ARTIFACTORY_URL)/terraform-plans/prod/$(ARTIFACT_NAME).tar.gz"
+
+                      tar -xzf $(ARTIFACT_NAME).tar.gz
+                      mv artifacts/tfplan-prod .
+                      echo "Plan downloaded successfully"
+                  env:
+                    ARTIFACTORY_USER: $(ARTIFACTORY_USER)
+                    ARTIFACTORY_TOKEN: $(ARTIFACTORY_TOKEN)
+
+                - script: |
+                    echo "Applying Terraform plan to production..."
+                    terraform apply -auto-approve tfplan-prod
+                  displayName: "Terraform Apply (Prod)"
+                  env:
+                    VAULT_TOKEN: $(VAULT_TOKEN)
+                    ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+                    ARM_TENANT_ID: $(ARM_TENANT_ID)
+                    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+                    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+
+                - task: Bash@3
+                  displayName: "Notify on Success"
+                  condition: succeeded()
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "Production deployment successful!"
+                      # Add notification logic here (Slack, Teams, email, etc.)
+
+                - task: Bash@3
+                  displayName: "Notify on Failure"
+                  condition: failed()
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "Production deployment failed!"
+                      # Add notification logic here (Slack, Teams, email, etc.)
+
+  # Stage 6: Destroy (Manual only)
+  - stage: Destroy
+    displayName: "Destroy Resources"
+    dependsOn: []
+    condition: |
+      and(
+        eq(variables['Build.Reason'], 'Manual'),
+        eq('${{ parameters.action }}', 'destroy')
+      )
+    jobs:
+      - deployment: TerraformDestroy
+        displayName: "Terraform Destroy"
+        environment: "${{ parameters.environment }}"
+        container:
+          image: hashicorp/terraform:1.6.0
+          options: --user root
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  displayName: "Checkout code"
+
+                - task: Bash@3
+                  displayName: "Import Secrets from Vault"
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      echo "Installing Vault CLI..."
+                      apk add --no-cache curl unzip
+                      curl -o vault.zip https://releases.hashicorp.com/vault/$(VAULT_VERSION)/vault_$(VAULT_VERSION)_linux_amd64.zip
+                      unzip vault.zip
+                      mv vault /usr/local/bin/
+
+                      export VAULT_TOKEN=$(VAULT_TOKEN)
+                      export VAULT_ADDR=$(VAULT_ADDR)
+
+                      if [ "${{ parameters.environment }}" == "prod" ]; then
+                        export VAULT_PATH="secret/kaleido/prod"
+                      else
+                        export VAULT_PATH="secret/kaleido/dev"
+                      fi
+
+                      export KALEIDO_API_ENDPOINT=$(vault kv get -field=api_endpoint $VAULT_PATH)
+                      export KALEIDO_USERNAME=$(vault kv get -field=username $VAULT_PATH)
+                      export KALEIDO_API_KEY=$(vault kv get -field=api_key $VAULT_PATH)
+
+                      echo "##vso[task.setvariable variable=KALEIDO_API_ENDPOINT;issecret=true]$KALEIDO_API_ENDPOINT"
+                      echo "##vso[task.setvariable variable=KALEIDO_USERNAME;issecret=true]$KALEIDO_USERNAME"
+                      echo "##vso[task.setvariable variable=KALEIDO_API_KEY;issecret=true]$KALEIDO_API_KEY"
+                  env:
+                    VAULT_TOKEN: $(VAULT_TOKEN)
+                    VAULT_ADDR: $(VAULT_ADDR)
+
+                - script: |
+                    terraform init
+                  displayName: "Terraform Init"
+                  env:
+                    VAULT_TOKEN: $(VAULT_TOKEN)
+
+                - script: |
+                    echo "Destroying Terraform resources..."
+                    terraform destroy -var-file="vars/${{ parameters.environment }}.tfvars" -auto-approve
+                  displayName: "Terraform Destroy"
+                  env:
+                    VAULT_TOKEN: $(VAULT_TOKEN)
